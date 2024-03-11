@@ -5,7 +5,6 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
 socketio = SocketIO(app, cors_allowed_origins="*")
 
-
 @app.route('/')
 def home():
     return render_template('index.html')
@@ -28,3 +27,8 @@ def handle_acknowledge_signal(data):
 @socketio.on('disconnect')
 def handle_disconnect():
     print('Client disconnected')
+
+@socketio.on('interval')
+def handle_heartbeat():
+    print('Interval message')
+    emit('interval_ack', {'status': 'Alive'})
