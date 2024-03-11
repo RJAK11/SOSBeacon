@@ -49,9 +49,7 @@
 <body class="waiting">
     <h1>Listening for Any Incoming SOS Signals...</h1>
     <button id="ack_button" class="ack_button">Acknowledge</button>
-    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"
-        integrity="sha384-Gr6Lu2Ajx28mzwyVR8CFkULdCU7kMlZ9UthllibdOSo6qAiN+yXNHqtgdTvFXMT4"
-        crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.js"></script>
     <script>
 
         var socket = io();
@@ -82,19 +80,6 @@
             document.body.innerHTML = '<h1>Listening for Any Incoming SOS Signals...</h1>';
             btn.style.display = 'none';
         };
-
-        var maintainInterval = setInterval(function () {
-            socket.emit('heartbeat');
-            console.log("Maintaining connection...")
-        }, 5000);
-
-        socket.on('interval_ack', function () {
-            console.log('Interval acknowledged');
-        });
-
-        socket.on('disconnect', function () {
-            clearInterval(maintainInterval);
-        });
 
     </script>
 </body>

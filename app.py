@@ -27,8 +27,3 @@ def handle_acknowledge_signal(data):
 @socketio.on('disconnect')
 def handle_disconnect():
     print('Client disconnected')
-
-@socketio.on('interval')
-def handle_heartbeat():
-    print('Interval message')
-    emit('interval_ack', {'status': 'Alive'})
