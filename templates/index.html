@@ -20,7 +20,7 @@
             font-size: x-large;
         }
 
-        .recieved {
+        .received {
             background-color: rgb(174, 9, 9);
             color: rgb(255, 210, 182);
             font-size: xx-large;
@@ -43,26 +43,38 @@
         }
     </style>
 
+
+</head>
+
+<body class="waiting">
+    <h1>Listening for Any Incoming SOS Signals...</h1>
+    <button id="ack_button" class="ack_button">Acknowledge</button>
     <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
     <script>
 
         var socket = io();
-        body.className = 'waiting';
+        document.body.className = 'waiting';
 
         var btn = document.createElement("button");
-        btn.innerText('Acknowledge');
-        btn.className('ack_button');
+        btn.innerText = 'Acknowledge';
+        btn.className = 'ack_button';
         btn.id = 'ack_button';
         btn.className = 'ack_button';
 
-        socket.on('sos_recieved', function () {
-            document.body.className = 'recieved';
-            document.body.innerHTML = '<h1>SOS SIGNAL RECIEVED</h1>';
+        socket.on('connect', function () {
+            console.log("hi")
+
+        });
+        socket.on('sos_received', function () {
+            console.log("SOS received")
+            document.body.className = 'received';
+            document.body.innerHTML = '<h1>SOS SIGNAL RECEIVED</h1>';
             document.body.appendChild(btn);
             btn.style.display = 'inline-block';
         });
 
-        document.getElementById('ack_button').onclick = function () {
+        btn.onclick = function () {
+            console.log("Button pressed")
             socket.emit('acknowledge_signal', { data: 'SOS Signal Acknowledged' });
             document.body.className = 'waiting';
             document.body.innerHTML = '<h1>Listening for Any Incoming SOS Signals...</h1>';
@@ -70,10 +82,6 @@
         };
 
     </script>
-</head>
-
-<body class="waiting">
-    <h1>Listening for Any Incoming SOS Signals...</h1>
 </body>
 
 </html>
