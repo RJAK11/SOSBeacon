@@ -83,7 +83,8 @@
 
         var maintainInterval = setInterval(function () {
             socket.emit('heartbeat');
-        }, 10000);
+            console.log("Maintaining connection...")
+        }, 5000);
 
         socket.on('interval_ack', function () {
             console.log('Interval acknowledged');
