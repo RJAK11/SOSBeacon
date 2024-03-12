@@ -1,4 +1,5 @@
 #include "mbed.h"
+#include "ISM43362.h"
 
 WiFiInterface *wifi;
 
