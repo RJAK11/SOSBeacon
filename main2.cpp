@@ -59,6 +59,7 @@ int main() {
     }
     printf("Connected to WiFi\n");
 
+    // Use IP address of server host instead of 10.88.111.9
     if (static_cast<NetworkInterface*>(&wifi)->gethostbyname("10.88.111.9", &addr) != NSAPI_ERROR_OK) {
         printf("DNS failed\n");
         return -1;
