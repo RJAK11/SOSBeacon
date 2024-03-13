@@ -61,10 +61,6 @@
         btn.id = 'ack_button';
         btn.className = 'ack_button';
 
-        socket.on('connect', function () {
-            console.log("hi")
-
-        });
         socket.on('sos_received', function () {
             console.log("SOS received")
             document.body.className = 'received';
