@@ -59,6 +59,5 @@ def handle_acknowledge_signal(data):
         print('Acknowledgment sent to SOS Beacon.')
 
 if __name__ == '__main__':
-    server_thread = threading.Thread(target=tcp_server, daemon=True)
-    server_thread.start()
+    threading.Thread(target=tcp_server, daemon=True).start()
     socketio.run(app)
