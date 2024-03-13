@@ -35,7 +35,6 @@ int connect_to_help(ISM43362Interface *wifi, SocketAddress * addr, TCPSocket * s
     if (receivedNum < 0) {
         printf("Did not receive acknowledgement\n");
     } else {
-        buffer[receivedNum] = '\0';
         printf("Received acknowledgement!\n");
     }
 
