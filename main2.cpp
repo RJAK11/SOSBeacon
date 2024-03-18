@@ -36,10 +36,16 @@ int connect_to_help(ISM43362Interface *wifi, SocketAddress * addr, TCPSocket * s
     }
     printf("Successfully connected. Begininning help packet transfer.\n");
 
-    // Send a sos message
-    char message[30];
-    sprintf(message, "SOS: Temperature %.2f", temp);
-    // const char* message = "SOS";
+    const char* message;
+
+    // Send a sos message that contains information of what triggered the SOS
+    if (temp < 60.0) {
+        message = "SOS: User Triggered";
+    }
+    else {
+        message = "SOS: Temperature Triggered";
+    }
+    
     int sentNum = socket->send(message, strlen(message));
     if (sentNum < 0) {
         printf("Failed to send\n");
