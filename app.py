@@ -30,12 +30,18 @@ def tcp_server():
                     if not data:
                         break
                     message = data.decode('utf-8').strip()
-                    if message == "SOS":
+                    if message == "SOS: User Triggered":
                         socketio.start_background_task(target=emit_sos_received)
+                    if message == "SOS: Temperature Triggered":
+                        socketio.start_background_task(target=emit_sos_received_temp)
 
 def emit_sos_received():
     socketio.emit('sos_received', {'message': 'SOS signal received'})
-    print("SOS event triggered")
+    print("SOS: User Triggered")
+
+def emit_sos_received_temp():
+    socketio.emit('sos_received_temp', {'message': 'SOS signal received due to temperature'})
+    print("SOS: Temperature Triggered")
 
 @app.route('/')
 def index():
@@ -59,5 +65,6 @@ def handle_acknowledge_signal(data):
         print('Acknowledgment sent to SOS Beacon.')
 
 if __name__ == '__main__':
-    threading.Thread(target=tcp_server, daemon=True).start()
+    server_thread = threading.Thread(target=tcp_server, daemon=True)
+    server_thread.start()
     socketio.run(app)
