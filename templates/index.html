@@ -64,10 +64,19 @@
         socket.on('sos_received', function () {
             console.log("SOS received")
             document.body.className = 'received';
-            document.body.innerHTML = '<h1>SOS SIGNAL RECEIVED</h1>';
+            document.body.innerHTML = '<h1>SOS SIGNAL RECEIVED: USER TRIGGERED</h1>';
             document.body.appendChild(btn);
             btn.style.display = 'inline-block';
         });
+
+        socket.on('sos_received_temp', function () {
+            console.log("SOS received")
+            document.body.className = 'received';
+            document.body.innerHTML = '<h1>SOS SIGNAL RECEIVED: HIGH TEMPERATURE</h1>';
+            document.body.appendChild(btn);
+            btn.style.display = 'inline-block';
+        });
+
 
         btn.onclick = function () {
             console.log("Button pressed")
