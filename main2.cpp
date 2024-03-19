@@ -5,11 +5,16 @@
 #include "ISM43362Interface.h"
 #include "TCPSocket.h"
 #include "stm32l475e_iot01_tsensor.h"
+#include "stm32l475e_iot01_accelero.h"
 #include <cstdio>
 #include <string>
 
-const char* ssid = "ssid";
-const char* password = "password";
+const char* ssid = "Hyperbola";
+const char* password = "Rjak232177*";
+
+ISM43362Interface wifi;
+TCPSocket socket;
+SocketAddress addr;
 
 // Set up flag and interrupt handler for user input
 volatile int send_sig = 0;
@@ -20,7 +25,14 @@ volatile int acknowledge = 0;
 DigitalOut led(LED1);
 LowPowerTicker led_toggle;
 
-int connect_to_help(ISM43362Interface *wifi, SocketAddress * addr, TCPSocket * socket, float temp)
+// Set up flag for which state the board is in depending on its orientation
+volatile int position_state = 0;
+// Set up flag for whether or not the last orientation of board was vertical
+volatile bool vertical_last = 0;
+// Set up flag for whether or not the last trigger was high temperature
+volatile bool high_temp_last = 0;
+
+int connect_to_help(ISM43362Interface *wifi, SocketAddress * addr, TCPSocket * socket, int temp_high)
 {
     // Open a socket on the network interface, and create a TCP connection to localhost
     if (socket->open(wifi) != NSAPI_ERROR_OK){
@@ -39,7 +51,7 @@ int connect_to_help(ISM43362Interface *wifi, SocketAddress * addr, TCPSocket * s
     const char* message;
 
     // Send a sos message that contains information of what triggered the SOS
-    if (temp < 60.0) {
+    if (temp_high == 0) {
         message = "SOS: User Triggered";
     }
     else {
@@ -68,7 +80,9 @@ int connect_to_help(ISM43362Interface *wifi, SocketAddress * addr, TCPSocket * s
 
 // Set signal flag to 1
 void signal_interrupt_handler() {
-    send_sig = 1;
+    if (position_state == 2 || position_state == 3){
+        send_sig = 1;
+    }
 }
 
 // Toggle the LED
@@ -76,23 +90,50 @@ void toggle_led() {
     led = !led;
 }
 
+bool check_device_vertical(){
+    int16_t xyz_counts[3] = {0};
+    BSP_ACCELERO_AccGetXYZ(xyz_counts);
+    int x_threshold = 850;
+    return abs(xyz_counts[0]) > x_threshold;
+}
+
+void update_position_state(){
+    bool curr_vertical = check_device_vertical();
+    if (curr_vertical != vertical_last){
+        if (curr_vertical && (position_state == 0 || position_state == 2)){
+            position_state += 1;
+        }
+        else if (!curr_vertical && (position_state == 1 || position_state == 3)){
+            position_state += 1;
+        }
+    }
+    vertical_last = curr_vertical;
+}
+
 int main() {
-    
-    ISM43362Interface wifi;
-    TCPSocket socket;
-    SocketAddress addr;
+
 
     // Attach interrupt handler for button
     button.fall(&signal_interrupt_handler);
     // Initialize temperature sensor
     uint32_t temp_init = BSP_TSENSOR_Init();
+    // Initialize accelerometer sensor
+    uint32_t acc_init = BSP_ACCELERO_Init();
     
     // Print if temperature sensor was successfully initialized
     if (temp_init != TSENSOR_OK) {
         printf("Error initializing temperature sensor\n");
     }
     else {
-        printf("Temperature sensor successfully initialized");
+        printf("Temperature sensor successfully initialized\n");
+    }
+
+    // Print if accelerometer sensor was successfully initialized
+    if (acc_init != ACCELERO_OK) {
+        printf("Error initializing accelerometer sensor\n");
+    }
+    else {
+        printf("Accelerometer sensor successfully initialized\n");
     }
 
     printf("Beginning connection\n");
@@ -111,36 +152,46 @@ int main() {
         return -1;
     }
 
-    // We sleep for 2 minutes and enter low power mode after which we will recheck the temperature -- allows us to operate in low-power mode
-    while (send_sig == 0 && BSP_TSENSOR_ReadTemp() < 60.0) {
-        printf("Sleeping until either user triggers SOS or auto-detected based on temperature");
-        ThisThread::sleep_for(120s);
-    }
+    while(true){
 
-    // Print what caused an SOS to be triggered
-    if (send_sig != 0) {
-        printf("User triggered SOS\n");
-    }
-    else {
-        printf("Temperature reaching unsafe values (> 59°C)\n");
-    }
+        // We sleep for 2 minutes and enter low power mode after which we will recheck the temperature -- allows us to operate in low-power mode
+        while (send_sig == 0 && (BSP_TSENSOR_ReadTemp() < 60.0 || high_temp_last == 1)) {
+            printf("Sleeping until either user triggers SOS or auto-detected based on temperature\n");
+            if (position_state == 4){
+                position_state = 0;
+            }
+            update_position_state();
+            ThisThread::sleep_for(2s);
+        }
 
-    int num = connect_to_help(&wifi, &addr, &socket, BSP_TSENSOR_ReadTemp());
-    if (num != 0){
-        printf("Connection Failed\n");
-        return num;
-    }
+        int temp_high = 0;
 
-    // Once we receive acknowledgement we toggle the LED. We use a low power ticker so that we can go to sleep
-    if (acknowledge == 1) {
-        printf("Toggling LED and going to sleep\n");
-        led_toggle.attach(&toggle_led, 2s);
-    }
+        // Print what caused an SOS to be triggered
+        if (send_sig != 0) {
+            printf("User triggered SOS\n");
+            high_temp_last = 0;
+        }
+        else {
+            printf("Temperature reaching unsafe values (> 59°C)\n");
+            high_temp_last = 1;
+            temp_high = 1;
+        }
 
-    // Going to sleep now
-    sleep();
-    
-    wifi.disconnect();
-    printf("Disconnected\n");
+        int num = connect_to_help(&wifi, &addr, &socket, temp_high);
+        if (num != 0){
+            printf("Connection Failed\n");
+            return num;
+        }
+
+        // Once we receive acknowledgement we toggle the LED. We use a low power ticker so that we can go to sleep
+        if (acknowledge == 1) {
+            printf("Toggling LED and going to sleep\n");
+            led_toggle.attach(&toggle_led, 1s);
+        }
+
+        send_sig = 0;
+        // Going to sleep now
+        sleep();
+    }
 
 }
