@@ -34,6 +34,10 @@ def tcp_server():
                         socketio.start_background_task(target=emit_sos_received)
                     if message == "SOS: Temperature Triggered":
                         socketio.start_background_task(target=emit_sos_received_temp)
+                    if message == "SOS: Sudden Acceleration":
+                        socketio.start_background_task(target=emit_sos_acceleration)
+                    if message == "User cancelling SOS":
+                        socketio.start_background_task(target=emit_sos_cancellation)
 
 def emit_sos_received():
     socketio.emit('sos_received', {'message': 'SOS signal received'})
@@ -42,6 +46,14 @@ def emit_sos_received():
 def emit_sos_received_temp():
     socketio.emit('sos_received_temp', {'message': 'SOS signal received due to temperature'})
     print("SOS: Temperature Triggered")
+
+def emit_sos_acceleration():
+    socketio.emit('emit_sos_acceleration', {'message': 'SOS signal due to acceleration'})
+    print("SOS: Sudden Acceleration")
+
+def emit_sos_cancellation():
+    socketio.emit('emit_sos_cancellation', {'message': 'SOS signal cancelled'})
+    print("User cancelling SOS")
 
 @app.route('/')
 def index():
