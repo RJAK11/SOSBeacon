@@ -26,6 +26,12 @@
             font-size: xx-large;
         }
 
+        .cancelled {
+            background-color: rgb(108, 200, 62);
+            color: rgb(175, 246, 159);
+            font-size: xx-large;
+        }
+
         .ack_button {
             color: rgb(174, 9, 9);
             font-size: x-large;
@@ -40,6 +46,22 @@
         .ack_button:hover {
             background-color: rgb(254, 234, 222);
             color: rgb(98, 4, 4);
+        }
+
+        .ack_button_cancelled {
+            color: rgb(75, 172, 26);
+            font-size: x-large;
+            border-radius: 10px;
+            border: none;
+            padding: 10px 15px;
+            cursor: pointer;
+            background-color: rgb(155, 221, 145);
+            display: none;
+        }
+
+        .ack_button_cancelled:hover {
+            background-color: rgb(155, 221, 145);
+            color: rgb(22, 97, 22);
         }
     </style>
 
@@ -67,6 +89,7 @@
             document.body.innerHTML = '<h1>SOS SIGNAL RECEIVED: USER TRIGGERED</h1>';
             document.body.appendChild(btn);
             btn.style.display = 'inline-block';
+            btn.className = 'ack_button';
         });
 
         socket.on('sos_received_temp', function () {
@@ -75,12 +98,31 @@
             document.body.innerHTML = '<h1>SOS SIGNAL RECEIVED: HIGH TEMPERATURE</h1>';
             document.body.appendChild(btn);
             btn.style.display = 'inline-block';
+            btn.className = 'ack_button';
+        });
+
+        socket.on('emit_sos_acceleration', function () {
+            console.log("SOS received")
+            document.body.className = 'received';
+            document.body.innerHTML = '<h1>SOS SIGNAL RECEIVED: SUDDEN ACCELERATION</h1>';
+            document.body.appendChild(btn);
+            btn.style.display = 'inline-block';
+            btn.className = 'ack_button';
+        });
+
+        socket.on('emit_sos_cancellation', function () {
+            console.log("SOS cancelled")
+            document.body.className = 'cancelled';
+            document.body.innerHTML = '<h1>SOS SIGNAL CANCELLED</h1>';
+            document.body.appendChild(btn);
+            btn.style.display = 'inline-block';
+            btn.className = 'ack_button_cancelled';
         });
 
 
         btn.onclick = function () {
             console.log("Button pressed")
-            socket.emit('acknowledge_signal', { data: 'SOS Signal Acknowledged' });
+            socket.emit('acknowledge_signal', { data: 'SOS Cancellation Acknowledged' });
             document.body.className = 'waiting';
             document.body.innerHTML = '<h1>Listening for Any Incoming SOS Signals...</h1>';
             btn.style.display = 'none';
