@@ -9,8 +9,8 @@
 #include <cstdio>
 #include <string>
 
-const char* ssid = "ssid";
-const char* password = "password";
+const char* ssid = "Hyperbola";
+const char* password = "Rjak232177*";
 
 ISM43362Interface wifi;
 TCPSocket socket;
@@ -26,7 +26,7 @@ DigitalOut led(LED1);
 LowPowerTicker led_toggle;
 
 // Set up flag and timer for checking if user wants to cancel SOS
-volatile int checking_cancel = 1;
+volatile int checking_cancel = 0;
 LowPowerTimer cancel_timer;
 
 // Set up flag for which state the board is in depending on its orientation
@@ -35,6 +35,13 @@ volatile int position_state = 0;
 volatile bool vertical_last = 0;
 // Set up flag for whether or not the last trigger was high temperature
 volatile bool high_temp_last = 0;
+
+// Variables to store info for past acceleration records
+const int recordSize = 10;
+float accelerationHistory[10];
+int currentHistoryIndex = 0; 
+
+volatile bool sudden_acceleration = 0;
 
 int connect_to_help(ISM43362Interface *wifi, SocketAddress * addr, TCPSocket * socket, int temp_high, bool cancelling)
 {
@@ -58,8 +65,11 @@ int connect_to_help(ISM43362Interface *wifi, SocketAddress * addr, TCPSocket * s
     if (temp_high == 0 && cancelling) {
         message = "User cancelling SOS";
     }
-    else if (temp_high == 0) {
+    else if (temp_high == 0 && sudden_acceleration == 0) {
         message = "SOS: User Triggered";
+    }
+    else if (temp_high == 0 && sudden_acceleration == 1) {
+        message = "SOS: Sudden Acceleration";
     }
     else {
         message = "SOS: Temperature Triggered";
@@ -72,6 +82,39 @@ int connect_to_help(ISM43362Interface *wifi, SocketAddress * addr, TCPSocket * s
         printf("Message sent successfully\n");
     }
 
+    sudden_acceleration = 0;
+    // We sleep whilst a cancel request is not detected
+    while (checking_cancel == 1 and cancel_timer.elapsed_time() < 5s)  {
+        ThisThread::sleep_for(1s);
+    }
+
+    // If the cancel request came within 5 seconds and the original SOS was sent by the user, we communicate this over WiFi
+    if (cancel_timer.elapsed_time() < 5s and checking_cancel == 2) {
+        acknowledge = 0;
+        // We stop the timer once a cancel request is detected
+        cancel_timer.stop();
+
+        message = "User cancelling SOS";
+        int sentNum = socket->send(message, strlen(message));
+        if (sentNum < 0) {
+            printf("Failed to send\n");
+        } else {
+            printf("Cancellation message sent successfully\n");
+        }
+
+
+        // Reset flags for next iteration
+        acknowledge = 0;
+        checking_cancel = 0;
+        sudden_acceleration = 0;
+        send_sig = 0;
+    }
+    // Otherwise, we go to sleep until the next button press
+    acknowledge = 0;
+    checking_cancel = 0;
+    sudden_acceleration = 0;
+    send_sig = 0;
+    // Going to sleep now
     char buffer[1024] = {0};
     nsapi_size_or_error_t receivedNum = socket->recv(buffer, sizeof(buffer));
     if (receivedNum < 0) {
@@ -81,6 +124,8 @@ int connect_to_help(ISM43362Interface *wifi, SocketAddress * addr, TCPSocket * s
         acknowledge = 1;
     }
 
+
+
     socket->close();
     return 0;
 }
@@ -89,10 +134,20 @@ int connect_to_help(ISM43362Interface *wifi, SocketAddress * addr, TCPSocket * s
 void signal_interrupt_handler() {
     if (position_state == 2 || position_state == 3){
         send_sig = 1;
+        led_toggle.detach();
     }
 
-    if (checking_cancel == 0) {
+    if (send_sig == 1 && checking_cancel == 0) {
         checking_cancel = 1;
+        cancel_timer.reset();
+        // We start the cancel timer so that we can track after how long a cancel command went out
+        cancel_timer.start();
+    }
+
+    else if (send_sig == 1 && checking_cancel == 1){
+        if (cancel_timer.elapsed_time() < 5s) {
+            checking_cancel = 2; // Cancel attempt within 5 seconds
+        }
     }
 }
 
@@ -101,6 +156,7 @@ void toggle_led() {
     led = !led;
 }
 
+// check orientation of device
 bool check_device_vertical(){
     int16_t xyz_counts[3] = {0};
     BSP_ACCELERO_AccGetXYZ(xyz_counts);
@@ -108,6 +164,41 @@ bool check_device_vertical(){
     return abs(xyz_counts[0]) > x_threshold;
 }
 
+
+// update the latest record
+void updateAccelerationHistory(float magnitude) {
+    accelerationHistory[currentHistoryIndex] = magnitude;
+    currentHistoryIndex = (currentHistoryIndex + 1) % recordSize;
+}
+
+// calculate the average acceleration based on last 10 records
+float calculateAveragePastAcceleration() {
+    float sum = 0;
+    for(int i = 0; i < recordSize; i++) {
+        sum += accelerationHistory[i];
+    }
+    return sum / recordSize;
+}
+
+// update the acceleration state by checking for sudden changes in comparison to last 10 records
+void check_sudden_acceleration() {
+    int16_t xyz_counts[3] = {0};
+
+    BSP_ACCELERO_AccGetXYZ(xyz_counts);
+    float currentMagnitude = sqrt(xyz_counts[0] * xyz_counts[0] + xyz_counts[1] * xyz_counts[1] + xyz_counts[2] * xyz_counts[2]);
+
+    updateAccelerationHistory(currentMagnitude);
+
+    float averagePastAcceleration = calculateAveragePastAcceleration();
+
+    if (currentMagnitude > averagePastAcceleration + 300) { 
+        sudden_acceleration = 1;
+    } else {
+        sudden_acceleration = 0;
+    }
+}
+
+// updates the position state of the board
 void update_position_state(){
     bool curr_vertical = check_device_vertical();
     if (curr_vertical != vertical_last){
@@ -129,6 +220,10 @@ int main() {
     uint32_t temp_init = BSP_TSENSOR_Init();
     // Initialize accelerometer sensor
     uint32_t acc_init = BSP_ACCELERO_Init();
+
+    for(int i = 0; i < recordSize; i++) {
+        accelerationHistory[i] = 1000;
+    }
     
     // Print if temperature sensor was successfully initialized
     if (temp_init != TSENSOR_OK) {
@@ -165,13 +260,14 @@ int main() {
     while(true){
 
         // We sleep for 2 minutes and enter low power mode after which we will recheck the temperature -- allows us to operate in low-power mode
-        while (send_sig == 0 && (BSP_TSENSOR_ReadTemp() < 60.0 || high_temp_last == 1)) {
+        while (send_sig == 0 && sudden_acceleration == 0 && (BSP_TSENSOR_ReadTemp() < 60.0 || high_temp_last == 1)) {
             printf("Sleeping until either user triggers SOS or auto-detected based on temperature\n");
             if (position_state == 4){
                 position_state = 0;
             }
             update_position_state();
-            ThisThread::sleep_for(2s);
+            check_sudden_acceleration();
+            ThisThread::sleep_for(500ms);
         }
 
         int temp_high = 0;
@@ -181,11 +277,18 @@ int main() {
             printf("User triggered SOS\n");
             high_temp_last = 0;
         }
+        else if (sudden_acceleration != 0){
+            printf("Sudden acceleration detected\n");
+            high_temp_last = 0;
+            led_toggle.detach();
+        }
         else {
             printf("Temperature reaching unsafe values (> 59°C)\n");
             high_temp_last = 1;
             temp_high = 1;
+            led_toggle.detach();
         }
+        
 
         int num = connect_to_help(&wifi, &addr, &socket, temp_high, false);
         if (num != 0){
@@ -199,42 +302,7 @@ int main() {
             led_toggle.attach(&toggle_led, 1s);
         }
 
-        // We set the flag to check for a cancel request
-        checking_cancel = 0;
-        // We start the cancel timer so that we can track after how long a cancel command went out
-        cancel_timer.start();
-
-        // We sleep whilst a cancel request is not detected
-        while (checking_cancel == 0) {
-            sleep();
-        }
-
-        // We stop the timer once a cancel request is detected
-        cancel_timer.stop();
-
-        // If the cancel request came within 10 seconds and the original SOS was sent by the user, we communicate this over WiFi
-        if (cancel_timer.elapsed_time() < 10s and send_sig != 0) {
-            acknowledge = 0;
-            connect_to_help(&wifi, &addr, &socket, temp_high, true);
-
-            // Once acknowledgement is received, we turn the LED off
-            if (acknowledge == 1) {
-                led = 0;
-            }
-
-            // Reset flags for next iteration
-            acknowledge = 0;
-            checking_cancel = 1;
-            send_sig = 0;
-        }
-        // Otherwise, we go to sleep until the next button press
-        else {
-            acknowledge = 0;
-            checking_cancel = 1;
-            send_sig = 0;
-            // Going to sleep now
-            sleep();
-        }
+        
     }
 
 }
