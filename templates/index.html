@@ -74,6 +74,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.0/socket.io.js"></script>
     <script>
 
+        // Use SocketIO here as well to communicate with the server
         var socket = io();
         document.body.className = 'waiting';
 
@@ -83,6 +84,7 @@
         btn.id = 'ack_button';
         btn.className = 'ack_button';
 
+        // Listening for various SOS signal events from server
         socket.on('sos_received', function () {
             console.log("SOS received")
             document.body.className = 'received';
@@ -119,7 +121,7 @@
             btn.className = 'ack_button_cancelled';
         });
 
-
+        // Handle button click and send acknowledgement signal
         btn.onclick = function () {
             console.log("Button pressed")
             socket.emit('acknowledge_signal', { data: 'SOS Cancellation Acknowledged' });
