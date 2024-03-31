@@ -2,6 +2,7 @@
 #include "InterruptIn.h"
 #include "PinNames.h"
 #include "mbed.h"
+#include "Timeout.h"
 #include "ISM43362Interface.h"
 #include "TCPSocket.h"
 #include "stm32l475e_iot01_tsensor.h"
@@ -9,8 +10,8 @@
 #include <cstdio>
 #include <string>
 
-const char* ssid = "Hyperbola";
-const char* password = "Rjak232177*";
+const char* ssid = "ssid";
+const char* password = "password";
 
 ISM43362Interface wifi;
 TCPSocket socket;
@@ -36,12 +37,15 @@ volatile bool vertical_last = 0;
 // Set up flag for whether or not the last trigger was high temperature
 volatile bool high_temp_last = 0;
 
-// Variables to store info for past acceleration records
+// Variables to store the acceleration history
 const int recordSize = 10;
 float accelerationHistory[10];
 int currentHistoryIndex = 0; 
 
 volatile bool sudden_acceleration = 0;
+
+// Timer to make the led stop blinking
+Timeout led_stop;
 
 int connect_to_help(ISM43362Interface *wifi, SocketAddress * addr, TCPSocket * socket, int temp_high, bool cancelling)
 {
@@ -83,7 +87,7 @@ int connect_to_help(ISM43362Interface *wifi, SocketAddress * addr, TCPSocket * s
     }
 
     sudden_acceleration = 0;
-    // We sleep whilst a cancel request is not detected
+        // We sleep whilst a cancel request is not detected
     while (checking_cancel == 1 and cancel_timer.elapsed_time() < 5s)  {
         ThisThread::sleep_for(1s);
     }
@@ -156,7 +160,13 @@ void toggle_led() {
     led = !led;
 }
 
-// check orientation of device
+// Stop the led from blinking
+void stop_led_blink() {
+    led_toggle.detach();
+    led = 0;
+}
+
+// Check if the device is currently in a vertical orientation 
 bool check_device_vertical(){
     int16_t xyz_counts[3] = {0};
     BSP_ACCELERO_AccGetXYZ(xyz_counts);
@@ -164,14 +174,13 @@ bool check_device_vertical(){
     return abs(xyz_counts[0]) > x_threshold;
 }
 
-
-// update the latest record
+// Update the accereleration history with the current value
 void updateAccelerationHistory(float magnitude) {
     accelerationHistory[currentHistoryIndex] = magnitude;
     currentHistoryIndex = (currentHistoryIndex + 1) % recordSize;
 }
 
-// calculate the average acceleration based on last 10 records
+// Calculate the average of the past accelerations for comparison
 float calculateAveragePastAcceleration() {
     float sum = 0;
     for(int i = 0; i < recordSize; i++) {
@@ -180,17 +189,19 @@ float calculateAveragePastAcceleration() {
     return sum / recordSize;
 }
 
-// update the acceleration state by checking for sudden changes in comparison to last 10 records
+// Check if there has been a sudden change in acceleration
 void check_sudden_acceleration() {
     int16_t xyz_counts[3] = {0};
-
     BSP_ACCELERO_AccGetXYZ(xyz_counts);
+
+    // Calculate the magnitude and update the history
     float currentMagnitude = sqrt(xyz_counts[0] * xyz_counts[0] + xyz_counts[1] * xyz_counts[1] + xyz_counts[2] * xyz_counts[2]);
 
     updateAccelerationHistory(currentMagnitude);
 
     float averagePastAcceleration = calculateAveragePastAcceleration();
 
+    // Check if the current acceleration is 300 more than the average
     if (currentMagnitude > averagePastAcceleration + 300) { 
         sudden_acceleration = 1;
     } else {
@@ -198,7 +209,7 @@ void check_sudden_acceleration() {
     }
 }
 
-// updates the position state of the board
+// Update the position state if the device is vertical 
 void update_position_state(){
     bool curr_vertical = check_device_vertical();
     if (curr_vertical != vertical_last){
@@ -252,15 +263,15 @@ int main() {
     printf("Connected to WiFi\n");
 
     // Use IP address of server host instead of 10.88.111.9
-    if (static_cast<NetworkInterface*>(&wifi)->gethostbyname("10.88.111.9", &addr) != NSAPI_ERROR_OK) {
+    if (static_cast<NetworkInterface*>(&wifi)->gethostbyname("10.88.111.20", &addr) != NSAPI_ERROR_OK) {
         printf("DNS failed\n");
         return -1;
     }
 
     while(true){
 
-        // We sleep for 2 minutes and enter low power mode after which we will recheck the temperature -- allows us to operate in low-power mode
-        while (send_sig == 0 && sudden_acceleration == 0 && (BSP_TSENSOR_ReadTemp() < 60.0 || high_temp_last == 1)) {
+        // We sleep and enter low power mode after which we will recheck the temperature -- allows us to operate in low-power mode
+        while (send_sig == 0 && sudden_acceleration == 0 && (BSP_TSENSOR_ReadTemp() < 10.0 || high_temp_last == 1)) {
             printf("Sleeping until either user triggers SOS or auto-detected based on temperature\n");
             if (position_state == 4){
                 position_state = 0;
@@ -280,13 +291,13 @@ int main() {
         else if (sudden_acceleration != 0){
             printf("Sudden acceleration detected\n");
             high_temp_last = 0;
-            led_toggle.detach();
+
         }
         else {
             printf("Temperature reaching unsafe values (> 59°C)\n");
             high_temp_last = 1;
             temp_high = 1;
-            led_toggle.detach();
+
         }
         
 
@@ -302,6 +313,8 @@ int main() {
             led_toggle.attach(&toggle_led, 1s);
         }
 
+        // Stop the led from blinking after 5 seconds
+        led_stop.attach(&stop_led_blink, 5s);
         
     }
 
